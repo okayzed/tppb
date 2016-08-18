@@ -5,7 +5,8 @@ import random
 
 DEBUG_SUMS=False
 MAX_ITERATIONS=10000
-MAX_SECONDS=5
+MAX_SECONDS=3
+BEST_CANDIDATE_ONLY=True
 
 
 class ThibM(list):
@@ -195,81 +196,91 @@ class ThibM(list):
 
     start_indeces.sort()
 
-    print "USING METHOD", start_indeces[0][2]
-    indeces = start_indeces[0][1]
+    self.results = []
+    for data in start_indeces:
+        print "USING METHOD", data[2]
+        indeces = data[1]
 
-    self.indeces = indeces
-    if len(indeces) != k - 1:
-      print "LEN INDECES", len(indeces)
-      print "PARTITIONING METHOD FAILED", methods[i]
-      return
+        if len(indeces) != k - 1:
+          print "LEN INDECES", len(indeces)
+          print "PARTITIONING METHOD FAILED", methods[i]
+          return
 
-    starting = self.evaluate_partitions(indeces, k)
+        starting = self.evaluate_partitions(indeces, k)
 
-    prev_val = starting
-    last_opt = starting
-    threshold = 1
-    success = False
-    self.starting_std = self.evaluate_partitions(indeces, k)
-    print "STARTING STD", self.starting_std
-    start = time.time()
-    prev = start
-    moves = 0
-    for i in xrange(MAX_ITERATIONS):
-      self.iterations = i
-      indeces.sort()
-      movements = self.find_likely_permutation(indeces, k)
-      moved = {}
-
-      num_moves = int(math.log(len(self)))
-      for val,index,change in movements[:num_moves]:
-        now = time.time()
-        moves += 1
-
-        if not index in moved:
-          moved[index] = True
-        else:
-          continue
+        prev_val = starting
+        last_opt = starting
+        threshold = 1
+        success = False
+        starting_std = self.evaluate_partitions(indeces, k)
+        print "STARTING STD", starting_std
+        start = time.time()
+        prev = start
+        moves = 0
 
 
-        if now - prev > 1:
-          print "ON ITERATION", i, "MOVES", moves, "IMPROVEMENT IS %.02f%% OF ORIGINAL" % (val / float(self.starting_std) * 100)
-          prev = now
-          print "PREV OPTIMUM", last_opt, "NEW OPT", val, "DELTA", (last_opt - val)
+        self.results.append([indeces, data[2], starting_std])
+        for i in xrange(MAX_ITERATIONS):
+          self.iterations = i
+          indeces.sort()
+          movements = self.find_likely_permutation(indeces, k)
+          moved = {}
 
-          if last_opt == val:
-            print "LIKELY LOCAL, STOPPING FOR NOW"
-            success = True
+          num_moves = int(math.log(len(self)))
+          for val,index,change in movements[:num_moves]:
+            now = time.time()
+            moves += 1
+
+            if not index in moved:
+              moved[index] = True
+            else:
+              continue
+
+
+            if now - prev > 1:
+              print "ON ITERATION", i, "MOVES", moves, "IMPROVEMENT IS %.02f%% OF ORIGINAL" % (val / float(starting_std) * 100)
+              prev = now
+              print "PREV OPTIMUM", last_opt, "NEW OPT", val, "DELTA", (last_opt - val)
+
+              if last_opt == val:
+                print "LIKELY LOCAL, STOPPING FOR NOW"
+                success = True
+                break
+              last_opt = val
+
+            indeces[index] += change
+            if prev_val <= val:
+              print "REACHED LOCAL LOCAL MINIMA AFTER", len(moved), "MOVES IN ITERATION %s, RECALCULATING MOVES" % (i)
+
+              success = True
+              break
+
+
+          if now - start > MAX_SECONDS:
+            print "%s SECONDS HAVE ELAPSED, STOPPING" % MAX_SECONDS
             break
-          last_opt = val
 
-        indeces[index] += change
-        if prev_val <= val:
-          print "REACHED LOCAL LOCAL MINIMA AFTER", len(moved), "MOVES IN ITERATION %s, RECALCULATING MOVES" % (i)
+          if success:
+            movements = self.find_likely_permutation(indeces, k)
+            val, index, change = movements[0]
+            indeces[index] += change
+            val = self.evaluate_partitions(indeces, k)
+            if prev_val > val:
+              success = False
+            else:
+              break
+          prev_val = val
 
-          success = True
-          break
-
-
-      if now - start > MAX_SECONDS:
-        print "%s SECONDS HAVE ELAPSED, STOPPING" % MAX_SECONDS
-        break
-
-      if success:
-        movements = self.find_likely_permutation(indeces, k)
-        val, index, change = movements[0]
-        indeces[index] += change
-        val = self.evaluate_partitions(indeces, k)
-        if prev_val > val:
-          success = False
+        if success:
+          print "CONVERGED ON LOCAL OPTIMUM AFTER", i, "ITERATIONS AND", moves, "MOVES"
         else:
-          break
-      prev_val = val
+          print 'COULDNT CONVERGE ON OPTIMUM AFTER %s ITERATIONS AND %s SECONDS' % (self.iterations, int(now - start))
 
-    if success:
-      print "CONVERGED ON LOCAL OPTIMUM AFTER", i, "ITERATIONS AND", moves, "MOVES"
-    else:
-      print 'COULDNT CONVERGE ON OPTIMUM AFTER %s ITERATIONS AND %s SECONDS' % (self.iterations, int(now - start))
+        if not BEST_CANDIDATE_ONLY:
+          self.print_stats(indeces, k, starting_std)
+
+        if BEST_CANDIDATE_ONLY:
+          break
 
 
   # for any set of indeces, figure out
@@ -301,13 +312,13 @@ class ThibM(list):
     movements.sort()
     return movements
 
-  def print_stats(self, k):
-    final_std = self.evaluate_partitions(self.indeces, k)
-    print "NEW INDECES:", self.indeces
-    print "SUMS", map(sum, self.get_slices(self.indeces))
+  def print_stats(self, indeces, k, starting_std):
+    final_std = self.evaluate_partitions(indeces, k)
+    print "NEW INDECES:", indeces
+    print "SUMS", map(sum, self.get_slices(indeces))
     print "TOTAL ITERATIONS:", self.iterations
-    print "FINAL STD:", final_std
-    print "IMPROVEMENT IS %.02f%% OF ORIGINAL" % (final_std / float(self.starting_std) * 100)
+    print "FINAL STD:", final_std, "ORIGINAL:", starting_std
+    print "IMPROVEMENT IS %.02f%% OF ORIGINAL" % (final_std / float(starting_std) * 100)
 
 
 def uniform_arr(size):
@@ -357,6 +368,7 @@ def main():
     k = int(sys.argv[2])
 
   methods = ["SEQUENTIAL", "UNIFORM", "MIXED", "EXPO", "UNIFORM BIG NUM"]
+  twice_interrupted = False
   for i, gen in enumerate([ range, uniform_arr, mixed_arr, expo_numbers, uniform_big_numbers ]):
     l = gen(n)
     method = methods[i]
@@ -368,9 +380,15 @@ def main():
     try:
       t.partition(k)
     except KeyboardInterrupt:
-      print "Keyboard Interrupted"
+      print "Keyboard Interrupted, Interrupt again to exit fully"
+      if twice_interrupted:
+        break
+      twice_interrupted = True
 
-    t.print_stats(k)
+    t.results.sort(key=lambda x: t.evaluate_partitions(x[0], k))
+    data = t.results[0]
+    print "BEST RESULTS %s" % data[1]
+    t.print_stats(data[0], k, data[2])
     print "\n\n\n"
 
 if __name__ == "__main__":
