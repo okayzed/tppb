@@ -14,11 +14,24 @@ import copy
 # {{{ TWEAKABLES
 MAX_ITERATIONS=10000 # how many iterations to run (at max)
 MAX_SECONDS=3 # how long before we stop trying to optimize a partitioning scheme
-ITER_TIME=0.5 # how long to run before checking if local optima has been hit
-STEP_SIZE=1 # a higher number means it runs faster but is less optimal
+ITER_TIME=1 # how long to run before checking if local optima has been hit
+
+# tppb jitters partition boundary by STEP_SIZE
+# higher number runs faster but is less optimal, set to 0 to use log(sqrt(len(arr)) - 2.5
+# at size 100K, that is 3 jitter. at size 10K it is 2
+# set to 1 to evaluate every index. not recommended for 100K+ elements
+STEP_SIZE=1
+
+# SETTING UP RANDOM SEEDS
+RANDOM_SEED=-1;
+if RANDOM_SEED > 0: random.seed(RANDOM_SEED)
+
+# how many moves to make before forcing a re-calculation of likely move candidates
+# if set to 0, will use log(len(arr))
+MAX_MOVES_PER_ITER=0
 
 LOOP_BREAKER=True # break loops if we saw a partition that is continually being moved back and forth
-MAX_LOOPS=50 # how many times before we consider a partition re-visiting its last index a loop
+MAX_LOOPS=10 # how many times before we consider a partition re-visiting its last index a loop
 
 # probably don't change these
 BEST_CANDIDATE_ONLY=True # only optimize the best candidate partition chosen
@@ -374,6 +387,8 @@ class ThibM(list):
 
         # make up to log(N) moves then re-calculate next moves
         num_moves = int(math.log(len(self)))
+        if MAX_MOVES_PER_ITER > 0:
+          num_moves = min(MAX_MOVES_PER_ITER, len(self))
 
         # {{{ INNER LOOP THAT JIGGLES THE PARTITION BOUNDARIES
         for val,index,change in movements[:num_moves]:
@@ -400,7 +415,7 @@ class ThibM(list):
               print "LIKELY LOCAL, STOPPING FOR NOW"
               maybe_minima = True
               break
-            last_opt = val
+            last_opt = best_val
 
           # if the move we just made has pushed us above our previous scores
           # that is an indication that we should break out of this moveset
@@ -481,8 +496,11 @@ class ThibM(list):
   def find_likely_permutation(self, indeces, k):
     movements = []
 
-    steps = STEP_SIZE
-    self.evaluate_partitions(indeces, k)
+    calc_size = int(math.log(math.sqrt(len(self))) - 3)
+    steps = max(calc_size, 1)
+    if STEP_SIZE > 0:
+      steps = STEP_SIZE
+
     for i, pos in enumerate(indeces):
       min_pos = 0
       if i > 0:
@@ -566,11 +584,19 @@ def main():
 
   methods = ["SEQUENTIAL", "UNIFORM", "MIXED", "EXPO", "UNIFORM BIG NUM"]
   twice_interrupted = False
+
   for i, gen in enumerate([ range, uniform_arr, mixed_arr, expo_numbers, uniform_big_numbers ]):
     l = gen(n)
     method = methods[i]
     print "GENERATING %s %s SAMPLES" % (n, method)
     print "CREATING %s PARTITIONS" % k
+
+    if STEP_SIZE == 0:
+      calc_size = int(math.log(math.sqrt(len(l))) - 2.5)
+      steps = max(calc_size, 1)
+      print "CALCULATED JITTER STEP SIZE:", steps
+    else:
+      print "JITTER STEP SIZE:", STEP_SIZE
 
     start = time.time()
     t = ThibM(l)
